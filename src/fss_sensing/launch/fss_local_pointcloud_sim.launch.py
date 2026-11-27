@@ -1,11 +1,14 @@
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, GroupAction
+from launch.conditions import LaunchConfigurationNotEquals
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node, SetParameter
 from launch_ros.substitutions import FindPackageShare
 
 
 def generate_launch_description():
+    topic = LaunchConfiguration("local_pc_topic")
+    transport = LaunchConfiguration("local_pc_transport")
     default_config_path = PathJoinSubstitution([
         FindPackageShare("fss_sensing"),
         "config",
@@ -23,6 +26,8 @@ def generate_launch_description():
             default_value=default_config_path,
             description="Path to the local pointcloud simulator configuration file.",
         ),
+        DeclareLaunchArgument("local_pc_topic", default_value="cloud_registered"),
+        DeclareLaunchArgument("local_pc_transport", default_value="raw"),
         GroupAction(
             scoped=True,
             actions=[
@@ -42,6 +47,20 @@ def generate_launch_description():
                     parameters=[{
                         "config_path": LaunchConfiguration("config_path"),
                     }],
+                ),
+                Node(
+                    package="point_cloud_transport",
+                    executable="republish",
+                    condition=LaunchConfigurationNotEquals("local_pc_transport", "raw"),
+                    parameters=[{
+                        "in_transport": "raw",
+                        "out_transport": transport,
+                    }],
+                    remappings=[
+                        ("in", topic),
+                        (["out/", transport], [topic, "/", transport]),
+                    ],
+                    output="screen",
                 ),
             ],
         ),

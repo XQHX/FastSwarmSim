@@ -31,6 +31,7 @@ lidar_sim:
   odom_topic: mavros/local_position/odom
   pose_topic: mavros/local_position/pose
   local_pc_topic: cloud_registered
+  local_pc_transport: cloudini
   global_pc_topic: global_pc
   frame_id: map
 

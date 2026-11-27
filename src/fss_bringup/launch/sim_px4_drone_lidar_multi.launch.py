@@ -16,7 +16,7 @@ from launch_ros.actions import Node, SetParameter
 from launch_ros.substitutions import FindPackageShare
 
 
-def load_config(context, arguments, vehicles):
+def load_config(context, arguments, vehicles, loaded_configs):
     filename = LaunchConfiguration("config").perform(context)
     vehicles.clear()
     if not filename:
@@ -26,6 +26,7 @@ def load_config(context, arguments, vehicles):
         settings = yaml.safe_load(stream)
     if not isinstance(settings, dict):
         raise ValueError(f"{path}: expected a mapping of launch arguments")
+    loaded_configs[path.resolve()] = settings
     if "launch" in settings:
         launch_settings = settings["launch"]
         if not isinstance(launch_settings, dict):
@@ -48,7 +49,7 @@ def load_config(context, arguments, vehicles):
         context.launch_configurations.setdefault(name, str(value))
 
 
-def make_drones(context, vehicles):
+def make_drones(context, vehicles, loaded_configs):
     count = int(LaunchConfiguration("num_drones").perform(context))
     drones_per_row = int(LaunchConfiguration("drones_per_row").perform(context))
     startup_batch_size = int(LaunchConfiguration("startup_batch_size").perform(context))
@@ -61,6 +62,18 @@ def make_drones(context, vehicles):
         raise ValueError("startup_batch_size must be at least 1")
     if startup_batch_delay_ms < 0:
         raise ValueError("startup_batch_delay_ms must be non-negative")
+
+    lidar_config = LaunchConfiguration("lidar_config").perform(context)
+    lidar = {}
+    if lidar_config and LaunchConfiguration("sensing_enable").perform(context) == "true":
+        path = Path(lidar_config).resolve()
+        config = loaded_configs.get(path)
+        if config is None:
+            with path.open(encoding="utf-8") as stream:
+                config = yaml.safe_load(stream) or {}
+        lidar = config.get("lidar_sim", config)
+    local_pc_topic = lidar.get("local_pc_topic", "cloud_registered")
+    local_pc_transport = lidar.get("local_pc_transport", "raw")
 
     single_launch = PathJoinSubstitution([
         FindPackageShare("fss_bringup"),
@@ -85,7 +98,9 @@ def make_drones(context, vehicles):
                     launch_arguments={
                         "namespace": namespace,
                         "mav_sys_id": str(index),
-                        "lidar_config": LaunchConfiguration("lidar_config"),
+                        "lidar_config": lidar_config,
+                        "local_pc_topic": local_pc_topic,
+                        "local_pc_transport": local_pc_transport,
                         "use_perfect_drone": LaunchConfiguration("use_perfect_drone"),
                         "use_fss_sim_time": LaunchConfiguration("use_fss_sim_time"),
                         "enable_time_coordinator": "false",
@@ -129,6 +144,7 @@ def generate_launch_description():
     ])
 
     vehicles = []
+    loaded_configs = {}
     arguments = [
         DeclareLaunchArgument("real_time_factor", default_value=LaunchConfiguration("max_real_time_factor", default="1.0")),
         DeclareLaunchArgument("start_coordinator_ui", default_value="false", choices=["true", "false"]),
@@ -221,7 +237,7 @@ def generate_launch_description():
     ]
     return LaunchDescription([
         DeclareLaunchArgument("config", default_value="", description="Optional fleet launch YAML file."),
-        OpaqueFunction(function=load_config, args=[arguments, vehicles]),
+        OpaqueFunction(function=load_config, args=[arguments, vehicles, loaded_configs]),
         *arguments,
         SetParameter(name="use_fss_sim_time", value=LaunchConfiguration("use_fss_sim_time")),
         SetParameter(name="use_sim_time", value=LaunchConfiguration("use_fss_sim_time")),
@@ -251,5 +267,5 @@ def generate_launch_description():
             arguments=["-d", LaunchConfiguration("rviz_config")],
             condition=IfCondition(LaunchConfiguration("rviz_enable")),
         ),
-        OpaqueFunction(function=make_drones, args=[vehicles]),
+        OpaqueFunction(function=make_drones, args=[vehicles, loaded_configs]),
     ])

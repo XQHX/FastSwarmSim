@@ -27,6 +27,8 @@ def generate_launch_description():
         DeclareLaunchArgument("lidar_config", default_value=PathJoinSubstitution([
             FindPackageShare("fss_sensing"), "config", "local_pointcloud_sim.yaml",
         ])),
+        DeclareLaunchArgument("local_pc_topic", default_value="cloud_registered"),
+        DeclareLaunchArgument("local_pc_transport", default_value="raw"),
         DeclareLaunchArgument("mav_sys_id", default_value="1"),
         DeclareLaunchArgument(
             "namespace",
@@ -128,6 +130,8 @@ def generate_launch_description():
                     launch_arguments={
                         "use_fss_sim_time": use_fss_sim_time,
                         "config_path": LaunchConfiguration("lidar_config"),
+                        "local_pc_topic": LaunchConfiguration("local_pc_topic"),
+                        "local_pc_transport": LaunchConfiguration("local_pc_transport"),
                     }.items(),
                 ),
             ],
